@@ -1,3 +1,14 @@
+---
+title: Maintenance Copilot
+emoji: 🛠️
+colorFrom: indigo
+colorTo: green
+sdk: docker
+app_port: 8501
+pinned: false
+short_description: Agentic RAG over aviation maintenance logbooks
+---
+
 # Maintenance Copilot: Agentic RAG over Aviation Logbooks
 
 **NexAI Hack 2026 · Track 1 (Agentic AI & Intelligent Automation) · Problem Statement 1.3**
@@ -111,6 +122,24 @@ All pinned versions are in [requirements.txt](requirements.txt).
    ```bash
    python -m eval.run_agent_eval
    ```
+
+### Deployment
+**Streamlit Community Cloud (free; the live demo runs here):**
+- Deploy from this GitHub repo, with `app.py` as the entry file and Python 3.14 selected under *Advanced settings*.
+- Put `GOOGLE_API_KEY = "..."` in the app's **Secrets** box. `app.py` copies Streamlit secrets into environment variables, so no `.env` file is needed. Without a key, the app runs in search-only mode.
+- The embedding index isn't committed: the app builds it on first start (about 20 s), and the models download from Hugging Face. Peak memory use is about 610 MB, within the platform's limit.
+
+**Docker (any container host, or Hugging Face Spaces with a paid plan):**
+- Since July 2026, Hugging Face requires a PRO plan for Docker and Gradio Spaces on CPU, so this route isn't free there.
+- The `Dockerfile` uses Python 3.14 and CPU-only PyTorch, and builds the index and downloads the models at build time.
+- The header block at the top of this README is the Space configuration (`sdk: docker`, `app_port: 8501`). Set `GOOGLE_API_KEY` as a Space secret.
+- Test the same image locally (with your key in `.env`):
+  ```bash
+  docker build -t maintenance-copilot .
+  ```
+  ```bash
+  docker run --rm -p 8501:8501 --env-file .env maintenance-copilot
+  ```
 
 ## Project structure
 

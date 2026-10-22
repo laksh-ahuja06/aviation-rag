@@ -1,10 +1,20 @@
 """Maintenance Copilot: Streamlit chat UI.
-
-    streamlit run app.py
+    run the application:
+    ./venv/bin/python -m streamlit run app.py
 """
+import os
 import re
 
 import streamlit as st
+
+# Streamlit Community Cloud passes the API key via its Secrets setting (st.secrets), not a .env
+# file. Copy plain string secrets into the environment before copilot/config.py reads them.
+try:
+    for _k, _v in st.secrets.items():
+        if isinstance(_v, str):
+            os.environ.setdefault(_k, _v)
+except Exception:  # no secrets file locally: .env is used instead
+    pass
 
 from copilot import config
 from copilot.agent import Copilot, CopilotAnswer

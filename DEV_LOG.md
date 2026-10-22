@@ -4,7 +4,9 @@ Running record of key decisions, AI assistance, experiments and rejected approac
 
 ---
 
-## 21 Oct 2026: Kickoff and setup
+## 21 Oct 2026, 9:00 PM: Kickoff and setup
+
+**9:00 PM:** Looked at all the problem statements, studied the tech stacks, and decided which packages/SDKs best suit the idea.
 
 ### Problem selection
 - Chose **PS 1.3, Maintenance Copilot: agentic RAG over logbooks** (Track 1, difficulty ★★★).
@@ -68,7 +70,9 @@ Agent behaviours to support: query expansion ("cylinder" → "CYL"), several sea
 
 ---
 
-## 21–22 Oct 2026: First build (MVP)
+## 22 Oct 2026, 6:00 AM: First build (version 1.0)
+
+**6:00 AM:** Started implementing the first version (version 1.0) of aviation-rag. Committed as "Version 1.0" at 7:04 AM.
 
 ### Gemini setup
 - `gemini-2.5-flash` (my first default) returned 404 "no longer available to new users". Listed the models the key can use instead.
@@ -129,7 +133,7 @@ Agent behaviours to support: query expansion ("cylinder" → "CYL"), several sea
 
 ---
 
-## 22 Oct 2026, morning: Startup crash and dropping Chroma
+## 22 Oct 2026, 8:30 AM: Startup crash and dropping Chroma
 
 ### The bug
 - Running `streamlit run app.py` crashed the whole process during model loading with a native error: `malloc: *** error for object ...: pointer being freed was not allocated`, followed by `zsh: abort`. This is memory corruption inside a C/C++/Rust extension, not a Python exception.
@@ -164,7 +168,7 @@ Agent behaviours to support: query expansion ("cylinder" → "CYL"), several sea
 
 ---
 
-## 22 Oct 2026: Ask back on ambiguous questions
+## 22 Oct 2026, 9:30 AM: Ask back on ambiguous questions
 
 ### The trigger
 - A user test of "plugs are worn" produced a summary and one cause bullet, then an **empty "Actions that fixed it:" heading**.
@@ -191,14 +195,22 @@ Agent behaviours to support: query expansion ("cylinder" → "CYL"), several sea
 | "... (I mean: Baffle plugs)" | Before the label fix: wrongly refused. After: "Replaced: baffle plug, 10 cases", all citations verified |
 | "#3 rocker cover leaking" | Answers directly with no unnecessary ask-back |
 
-### Follow-up: making ask-back deterministic
+### 10:00 AM: Version 2.0 started: local model instead of an API key
+- Started version 2.0 on a separate branch. It uses a local model instead of the Gemini API.
+- Why:
+  - The Gemini free tier allows only 20 requests per model per day (see "Gemini free-tier quota" above).
+  - The venue network intercepts HTTPS, which can block the API during the demo.
+  - A local model removes both risks and needs no API key.
+- Plan: the LLM is created only in `copilot/llm.py`, so that should be the main file to change. The deterministic parts work with any model: retrieval, evidence gate, ambiguity check, the verifier's ID check, the leaderboard and search-only mode. The main risk is tool-calling reliability with a smaller model.
+
+### 10:15 AM: Follow-up: making ask-back deterministic
 - In a user test, the same "plugs are worn" prompt **didn't** ask back. Flash-Lite answered directly, mixed spark plugs with baffle plugs, and the verifier removed the cause bullet, leaving an **empty "Likely causes:" heading**. Whether the LLM calls `ask_clarification` varies from run to run, so the trust behaviour can't depend on it alone.
 - **Deterministic rule** (`Copilot._ambiguity`): after the evidence gate, take the gated records within 1.0 of the best score. If they span 2+ components (ignoring "other") and the best score is ≥ 5.0, ask back. Each option names its part and component, e.g. "Baffle plug (baffle / cooling)" vs "Spark plug (ignition)". The first version showed "Spark plug hole plug" vs "Spark plug", which was confusing.
 - **Tuning, offline with no LLM:** over the 15 test questions the rule fires on **none**. A10 ("exhaust pipe cracked") would have fired at band-only, but its best score is 3.34, below the 5.0 minimum. It does fire on genuinely vague inputs: "seal leaking" (pushrod vs baffle) and "screw missing" (baffle vs rocker cover). On the user's actual evidence (spark plug 8.0, baffle plugs 7.9) it fires.
 - **Empty headings:** after verification, a heading line ending in ":" with no bullet under it is dropped.
 - The LLM tool stays as well: the model can still ask back for reasons the rule can't see.
 
-### Network: TLS interception and offline model loading
+### 10:15 AM: Network: TLS interception and offline model loading
 - On the event Wi-Fi, Hugging Face Hub requests failed with "Trustwave Organization Validation CA, Level 2 certificate is revoked", a TLS-inspection proxy. The models still loaded from the local cache, but only after about a minute of retries at each start. Gemini calls failed too, so the app correctly dropped to search-only mode.
 - **Fix:** `config.py` sets `HF_HUB_OFFLINE=1` when both models are already in the local cache, so startup no longer contacts the Hub. A fresh machine (or Hugging Face Spaces) still downloads them on first run.
 - **Demo risk:** if the venue network blocks or intercepts `generativelanguage.googleapis.com`, Gemini won't work. Search-only mode still answers. Have a phone hotspot ready as a backup.
@@ -206,8 +218,21 @@ Agent behaviours to support: query expansion ("cylinder" → "CYL"), several sea
 ### Housekeeping
 - `.env.example` had been deleted locally, and the committed copy was missing its `GOOGLE_API_KEY` / `GEMINI_MODEL` lines. I restored it with placeholders (the rules require it). I scanned every commit of it: no real API key has ever been committed, and `.env` was never tracked.
 
+---
+
+## 22 Oct 2026, 10:40 AM: Learning the architecture and codebase
+- Went through the architecture and the codebase so every part can be explained to the judges, as the rules require for AI-generated code.
+- Created `docs/architecture.svg`, an updated diagram of the current pipeline. It replaces the original sketch and the outdated Mermaid diagram in the README. Changes include numpy search instead of Chroma, the 4 agent tools, the offline labels, search-only mode and the ambiguity check.
+- Mapped each box in the diagram to the file and function that implements it.
+- Reviewed the generated data files:
+  - `data/records.csv`: the original 3 columns plus `problem_norm`, `action_norm`, `component`, `fault_type` and `action_type_rule`.
+  - `data/action_labels.csv`: Gemini's `action_type` + `part` for each unique problem/action pair.
+- Confirmed that `action_labels.csv` is derived only from the dataset: Gemini labelled the existing ACTION text and added no outside information. The evaluation doesn't use it, since test relevance is defined on PROBLEM text written before the labels existed.
+- Open question: the Gemini labels haven't been checked for accuracy. Plan to hand-check a random sample of 50 and report the result.
+
 ### Next steps
 - [ ] Commit at least hourly.
+- [ ] Hand-check 50 random action labels and report the accuracy in the README.
 - [ ] Re-run `python -m eval.run_agent_eval` after the quota resets, and report the results in the README.
 - [ ] Local-model branch: keep the deterministic parts hint and the search-only fallback; tool-calling reliability is the main risk.
 - [x] `pip install -r requirements.txt` in the venv.
