@@ -234,6 +234,6 @@ Limitations of this evaluation: 20 questions is a small set, and on it the four 
 
 ## Team
 
-| Name | Role | Contact |
-|---|---|---|
-| Laksh Ahuja | Frontend, Backend, AI Part | 8810564903 |
+| Name | Contact |
+|---|---|
+| Laksh Ahuja (Solo) | ahuja.laksh@gmail.com |
