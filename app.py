@@ -8,13 +8,17 @@ import re
 import streamlit as st
 
 # Streamlit Community Cloud passes the API key via its Secrets setting (st.secrets), not a .env
-# file. Copy plain string secrets into the environment before copilot/config.py reads them.
+# file. Copy string secrets into the environment before copilot/config.py reads them, including
+# ones nested under a [section], and accept GEMINI_API_KEY as another name for the key.
 try:
     for _k, _v in st.secrets.items():
-        if isinstance(_v, str):
-            os.environ.setdefault(_k, _v)
+        for _name, _val in (_v.items() if hasattr(_v, "items") else [(_k, _v)]):
+            if isinstance(_val, str) and _val.strip():
+                os.environ.setdefault(_name, _val.strip())
 except Exception:  # no secrets file locally: .env is used instead
     pass
+if not os.environ.get("GOOGLE_API_KEY") and os.environ.get("GEMINI_API_KEY"):
+    os.environ["GOOGLE_API_KEY"] = os.environ["GEMINI_API_KEY"]
 
 from copilot import config
 from copilot.agent import Copilot, CopilotAnswer
@@ -159,6 +163,9 @@ with st.sidebar:
         st.session_state.history = []
 
 copilot = load_copilot()
+if copilot.llm_setup_error:
+    st.sidebar.error("No Gemini API key found, so answers are search-only. Set GOOGLE_API_KEY in "
+                     "the app's Secrets (Streamlit Cloud) or in .env (local).", icon="🔑")
 st.session_state.setdefault("history", [])
 
 for i, (q, ans) in enumerate(st.session_state.history):

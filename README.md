@@ -1,21 +1,10 @@
----
-title: Maintenance Copilot
-emoji: 🛠️
-colorFrom: indigo
-colorTo: green
-sdk: docker
-app_port: 8501
-pinned: false
-short_description: Agentic RAG over aviation maintenance logbooks
----
-
 # Maintenance Copilot: Agentic RAG over Aviation Logbooks
 
 **NexAI Hack 2026 · Track 1 (Agentic AI & Intelligent Automation) · Problem Statement 1.3**
 
 > ⚠️ **Disclaimer:** This is a decision-support prototype built for a hackathon. Its answers are **not approved maintenance procedures** and must not be used for airworthiness decisions. Always follow the aircraft maintenance manual and your organisation's approved procedures.
 
-- **Live demo:** _TBD (Hugging Face Spaces URL)_
+- **Live demo:** **[maintainance-copilot.streamlit.app](https://maintainance-copilot.streamlit.app/)** (Streamlit Community Cloud). The app sleeps after 12 hours without visitors; the first visit after that takes about a minute to wake it.
 - **Demo video:** _TBD_
 - **Development log:** [DEV_LOG.md](DEV_LOG.md)
 
@@ -132,7 +121,7 @@ All pinned versions are in [requirements.txt](requirements.txt).
 **Docker (any container host, or Hugging Face Spaces with a paid plan):**
 - Since July 2026, Hugging Face requires a PRO plan for Docker and Gradio Spaces on CPU, so this route isn't free there.
 - The `Dockerfile` uses Python 3.14 and CPU-only PyTorch, and builds the index and downloads the models at build time.
-- The header block at the top of this README is the Space configuration (`sdk: docker`, `app_port: 8501`). Set `GOOGLE_API_KEY` as a Space secret.
+- For a Hugging Face Space, add the Space header block (`sdk: docker`, `app_port: 8501`) to the top of the README, and set `GOOGLE_API_KEY` as a Space secret.
 - Test the same image locally (with your key in `.env`):
   ```bash
   docker build -t maintenance-copilot .

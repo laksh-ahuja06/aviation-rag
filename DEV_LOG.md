@@ -230,12 +230,40 @@ Agent behaviours to support: query expansion ("cylinder" → "CYL"), several sea
 - Confirmed that `action_labels.csv` is derived only from the dataset: Gemini labelled the existing ACTION text and added no outside information. The evaluation doesn't use it, since test relevance is defined on PROBLEM text written before the labels existed.
 - Open question: the Gemini labels haven't been checked for accuracy. Plan to hand-check a random sample of 50 and report the result.
 
+---
+
+## 22 Oct 2026, 12:30 PM: Deployment (live on Streamlit Community Cloud)
+
+**Live app:** https://maintainance-copilot.streamlit.app/
+
+### First plan: Hugging Face Spaces with Docker (rejected)
+- Wrote a `Dockerfile`: Python 3.14 (the same as local) and CPU-only PyTorch (`torch==2.14.1` from the PyTorch CPU index instead of the multi-GB CUDA build). It builds the index and downloads the models at build time.
+- Checked that all 101 packages resolve for Linux x86_64 on Python 3.14 (`pip install --dry-run --platform ...`), including `torch 2.14.1+cpu`.
+- **Rejected:** since July 2026 the Hugging Face docs say *"Gradio and Docker Spaces run on compute and require a paid plan to create"* (PRO, $9/month, for personal accounts). Free accounts get only static Spaces, or Gradio on ZeroGPU, and Streamlit is no longer an SDK option.
+- The `Dockerfile` and `.dockerignore` are kept for any Docker host, or for a paid Space.
+
+### Chosen: Streamlit Community Cloud (free)
+- It hosts Streamlit apps directly from the public GitHub repo, using `app.py` with Python 3.14 selected in Advanced settings.
+- Measured the app's peak memory locally at **about 610 MB** (both models loaded, searches and exact counts run), within the platform's limit of up to 2.7 GB.
+- The embedding index isn't committed; the app builds it on first start, and the models download from Hugging Face.
+- **API key:** stored in the app's **Secrets** setting, never in the repo. `app.py` copies Streamlit secrets into environment variables, so `copilot/config.py` reads the key the same way it reads `.env` locally. I checked that `.env` has never been committed and isn't on GitHub.
+
+### Bug found on first deploy: crash when the key is missing
+- The first deploy showed a red `pydantic ValidationError` on load: *"API key required for Gemini Developer API."* The secret wasn't set yet, so `ChatGoogleGenerativeAI(google_api_key=None)` failed inside `Copilot.__init__` and took the whole app down. I reproduced it locally with the key unset.
+- This contradicted the README's claim that the app runs search-only without a key. **Fixes:**
+  - `Copilot.__init__` catches the setup error. Every question then goes to **search-only mode** (search, evidence gate, leaderboard), and the sidebar shows a 🔑 "No Gemini API key found" warning.
+  - The secrets reader also accepts keys nested under a `[section]` and the name `GEMINI_API_KEY`, and trims whitespace.
+  - `.streamlit/secrets.toml` is git-ignored, so a local secrets file can never be pushed to the public repo.
+- Tested in a clean copy with no key: the app starts, answers from records, and still refuses "GPS display is blank". Locally with `.env`, the key loads and all 4 Gemini models set up as before.
+- After the key was added to the Secrets setting, the deployed app answered with the full agent.
+
 ### Next steps
 - [ ] Commit at least hourly.
 - [ ] Hand-check 50 random action labels and report the accuracy in the README.
 - [ ] Re-run `python -m eval.run_agent_eval` after the quota resets, and report the results in the README.
 - [ ] Local-model branch: keep the deterministic parts hint and the search-only fallback; tool-calling reliability is the main risk.
+- [ ] Demo video (≤ 5 min), pitch deck (PowerPoint), LinkedIn + X posts, and team details in the README.
 - [x] `pip install -r requirements.txt` in the venv.
 - [x] Write test questions before tuning.
 - [x] Build ingestion, normalisation, hybrid index, agent, trust layer, leaderboard and UI.
-- [ ] Deploy to Hugging Face Spaces.
+- [x] Deploy: live at https://maintainance-copilot.streamlit.app/ (Streamlit Community Cloud).

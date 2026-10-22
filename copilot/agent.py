@@ -89,8 +89,14 @@ class Copilot:
     def __init__(self, retriever: Retriever | None = None):
         self.retriever = retriever or Retriever()
         self.labels = ActionLabels(self.retriever.df.reset_index(drop=True))
-        self.primary, self.fallbacks = chat_model()
-        self.verifier_llm = with_fallback(self.primary, self.fallbacks)
+        # No API key (e.g. a deployment whose secret isn't set) must not crash the app:
+        # every question then goes straight to search-only mode.
+        self.llm_setup_error = None
+        try:
+            self.primary, self.fallbacks = chat_model()
+            self.verifier_llm = with_fallback(self.primary, self.fallbacks)
+        except Exception as e:
+            self.llm_setup_error = f"LLM not configured ({type(e).__name__}): is GOOGLE_API_KEY set?"
 
     # --- agent loop -------------------------------------------------------------
 
@@ -127,6 +133,8 @@ class Copilot:
         """allow_clarify=False for a question the technician already clarified (no ask-back loops)."""
         state = RunState(question=question, allow_clarify=allow_clarify)
         try:
+            if self.llm_setup_error:
+                raise RuntimeError(self.llm_setup_error)  # handled below as search-only mode
             out = self._graph(state, allow_clarify).invoke({"messages": [HumanMessage(question)]},
                                                            {"recursion_limit": 2 * config.MAX_AGENT_STEPS + 4})
             if state.clarification:
