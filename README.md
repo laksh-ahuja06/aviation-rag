@@ -33,6 +33,47 @@ When a technician sees a fault, the fastest fix is often buried in years of past
   ```
 - **Chat UI** shows the answer, the leaderboard, the cited records side by side, the agent's tool-call trace and the disclaimer.
 
+## Demo walkthrough
+
+Five questions that show each behaviour of the copilot (screenshots from the running app).
+
+### 1. Answer with citations and a fix leaderboard
+**"#3 rocker cover leaking, what usually fixes it?"**
+- The leaderboard ranks past fixes: **"Replaced: rocker cover gasket", 9 of 10 similar records**.
+- Every bullet in the answer cites its records, and the cited records appear on the right with their original logbook text.
+
+![Answer with citations and fix leaderboard](docs/screenshots/2-answer-rocker-cover.png)
+
+### 2. Refusal when the logbook has no evidence
+**"GPS display is blank after power up"**
+- The logbook covers piston engines only, so no record passes the evidence gate.
+- The copilot says **"Insufficient evidence"** instead of inventing a fix.
+
+![Refusal on an unanswerable question](docs/screenshots/1-refusal-gps.png)
+
+### 3. Ask back when the question is ambiguous
+**"plugs are worn"**
+- "Plugs" matches two different parts in the logbook: **spark plugs** (ignition) and **baffle hole / access plugs** (cooling baffle).
+- Instead of merging them into one answer, the copilot asks which one is meant, with one button per option.
+
+![Ask-back with option buttons](docs/screenshots/4-ask-back-plugs.png)
+
+### 4. The clarified answer
+**"plugs are worn (I mean: Baffle hole / access plugs)"**
+- After the technician picks an option, the answer covers only baffle plugs.
+- Causes (wear, chafing that enlarges the holes) and fixes (replace the plug, or patch/rivet the hole) each cite their records.
+
+![Answer after clarification](docs/screenshots/5-clarified-baffle-plugs.png)
+
+### 5. Verifier fallback: never show an unverified answer
+**"pipeline leak"**
+- The search found 3 intake-pipe gasket records, but the AI-written answer failed the citation verifier.
+- Instead of showing it, the copilot shows an **auto-summary built directly from the records**: "Replaced: intake gasket, 3 records".
+
+![Auto-summary when the AI answer can't be verified](docs/screenshots/3-auto-summary-pipeline-leak.png)
+
+Every answer also has an expandable **agent trace** showing each tool call, the normalised query, the evidence gate result and the citation verifier's decisions.
+
 ## Architecture
 
 ![Maintenance Copilot architecture](docs/architecture.svg)

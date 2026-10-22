@@ -257,6 +257,11 @@ Agent behaviours to support: query expansion ("cylinder" → "CYL"), several sea
 - Tested in a clean copy with no key: the app starts, answers from records, and still refuses "GPS display is blank". Locally with `.env`, the key loads and all 4 Gemini models set up as before.
 - After the key was added to the Secrets setting, the deployed app answered with the full agent.
 
+### Bug found on the next push: stale cached copilot
+- After pushing the fix above, the live app showed `AttributeError: ... llm_setup_error`. Streamlit Cloud applies a git push by re-running `app.py` **in the same process**, and `@st.cache_resource` returned the `Copilot` built by the *old* code, before that attribute existed. Rebooting the app clears it, but every future push could hit the same problem during the demo.
+- **Fix:** `load_copilot(version)` is now keyed by a hash of the `copilot/*.py` sources, so any code change builds a fresh copilot. `max_entries=1` drops the old one, which matters at about 610 MB each against a 2.7 GB limit. The new attribute is also read with `getattr(..., None)`.
+- Verified locally by reproducing the scenario: started the app, changed a `copilot/` file while it was running, then reloaded. The server log shows both models loaded a second time (a rebuild), with no error.
+
 ### Next steps
 - [ ] Commit at least hourly.
 - [ ] Hand-check 50 random action labels and report the accuracy in the README.

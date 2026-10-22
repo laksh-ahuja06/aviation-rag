@@ -2,6 +2,7 @@
     run the application:
     ./venv/bin/python -m streamlit run app.py
 """
+import hashlib
 import os
 import re
 
@@ -38,8 +39,19 @@ EXAMPLES = [
 CITE_RE = re.compile(r"\b(1\d{5})\b")
 
 
-@st.cache_resource(show_spinner="Loading models and index (first run only)…")
-def load_copilot() -> Copilot:
+def code_version() -> str:
+    """Hash of the copilot package source. Streamlit Cloud applies a git push by re-running app.py
+    in the same process, so without this key the cache kept a Copilot built by the old code
+    (which crashed with an AttributeError on the first push that added a new attribute)."""
+    h = hashlib.sha256()
+    for f in sorted((config.ROOT / "copilot").glob("*.py")):
+        h.update(f.read_bytes())
+    return h.hexdigest()[:12]
+
+
+# max_entries=1: when the code changes, drop the old copilot (~600 MB) instead of keeping both.
+@st.cache_resource(show_spinner="Loading models and index (first run only)…", max_entries=1)
+def load_copilot(version: str) -> Copilot:
     if not config.EMBEDDINGS_NPY.exists():  # fresh deployment: the index isn't committed, build it (~1 min)
         from scripts.build_index import main as build_index
         build_index()
@@ -162,8 +174,8 @@ with st.sidebar:
     if st.button("Clear chat"):
         st.session_state.history = []
 
-copilot = load_copilot()
-if copilot.llm_setup_error:
+copilot = load_copilot(code_version())
+if getattr(copilot, "llm_setup_error", None):
     st.sidebar.error("No Gemini API key found, so answers are search-only. Set GOOGLE_API_KEY in "
                      "the app's Secrets (Streamlit Cloud) or in .env (local).", icon="🔑")
 st.session_state.setdefault("history", [])
