@@ -127,9 +127,77 @@ Agent behaviours to support: query expansion ("cylinder" → "CYL"), several sea
   3. `eval/run_agent_eval.py` flags rows with LLM errors and excludes them from the metrics.
 - After the changes, a real run (with Flash-Lite answering via the chain) answered "big magneto drop during run-up" from an exact count of **26 matching records**, with all 6 cited lines verified. It refused "pitot tube blocked" after 3 searches.
 
+---
+
+## 22 Oct 2026, morning: Startup crash and dropping Chroma
+
+### The bug
+- Running `streamlit run app.py` crashed the whole process during model loading with a native error: `malloc: *** error for object ...: pointer being freed was not allocated`, followed by `zsh: abort`. This is memory corruption inside a C/C++/Rust extension, not a Python exception.
+- The crash came right after both models had loaded (199/199, then 105/105 weights). In `Retriever.__init__` the next step was `chromadb.PersistentClient(...)`, which runs Chroma's native Rust engine. The likely cause is that engine sharing a process with PyTorch on the very new Python 3.14.
+
+### Investigation
+- I couldn't reproduce it in 13 attempts: 5 plain-script loads, 6 loads in a worker thread (how Streamlit runs scripts), and 2 real Streamlit starts, including two browser sessions at once. So it's intermittent, which is the worst kind of bug to discover during a live demo.
+
+### Decision: drop Chroma and use numpy exact search
+- At 6,169 vectors × 384 dimensions, the index is a 9.5 MB matrix. One matrix product does an **exact** cosine search in under a millisecond, while Chroma's HNSW search is approximate. Component/fault-type filters become a boolean mask, the same one BM25 already used.
+- Removing the native library removes the crash candidate and simplifies deployment.
+- Rejected alternatives:
+  - Keeping Chroma and hoping: the crash is unexplained and intermittent.
+  - Pinning an older Python: there's no time to rebuild the environment mid-hackathon.
+  - FAISS: another native library, and overkill at this size.
+- Verified after the change: retrieval hit@5 is unchanged at **13/15 overall**; all unanswerable questions remain below the threshold; and the app passed a two-session Streamlit start plus a full agent answer.
+
+### Correction: Chroma was NOT the cause
+- The app crashed again without Chroma (`zsh: segmentation fault`), so the diagnosis above was wrong. It was based on timing ("the next step after loading"), not evidence.
+- **The evidence came from macOS crash reports** (`~/Library/Logs/DiagnosticReports/Python-*.ips`, one for each crash, at 07:03 and 08:59). Both faulting threads were named `ThreadPoolExecutor-9_1` and crashed inside **PyTorch's MPS (Apple GPU) backend**: `Tensor.to(device)` → `mps_copy_` → `MetalShaderLibrary::exec_unary_kernel` → a hash-table insert. One run aborted with "pointer being freed was not allocated", the other segfaulted.
+- **Root cause:**
+  1. `sentence-transformers` puts models on `mps` by default on Apple Silicon.
+  2. LangGraph's `ToolNode` runs parallel tool calls in a thread pool.
+  3. Two threads using the MPS backend at once race on PyTorch's shared Metal kernel cache.
+  4. It only happens when the agent makes parallel tool calls at the right moment, which is why it was intermittent.
+- **Proof:** a stress script (8 threads, models on MPS, no lock) segfaulted **3/3 times** (exit 139). After the fix, the same stress test through the real `Retriever` passed **3/3 times**, 240 searches each.
+- **Fix** (`copilot/retrieval.py`, `config.DEVICE`):
+  - Models run on **CPU**, which is fast enough for these small models and matches the CPU-only Hugging Face Spaces deployment.
+  - A `threading.Lock` serialises every embedder and cross-encoder call, so parallel tool calls can't run the models at the same time.
+  - Embeddings were rebuilt on CPU. hit@5 is unchanged at 13/15, and the unanswerable scores are identical.
+- **Chroma stays out anyway:** numpy exact search is simpler and exact, but Chroma was innocent. Lesson: read the crash report before changing code.
+
+---
+
+## 22 Oct 2026: Ask back on ambiguous questions
+
+### The trigger
+- A user test of "plugs are worn" produced a summary and one cause bullet, then an **empty "Actions that fixed it:" heading**.
+- Cause: "plugs" matched two different parts. Record 105445 is "ALL SPARK PLUGS WORN" (ignition); records 101073, 101156, 100331 and others are "SPARK PLUG BAFFLE HOLE PLUGS ARE WORN" (cooling-baffle hardware).
+- The agent merged both kinds into its action bullets, and the citation verifier (which checks "same fault as the question") removed them. The trust layer worked, but the answer looked broken.
+
+### Design
+- **`ask_clarification(question, options)` tool:** the graph stops after this tool runs, and the UI shows the question with one button per option. Clicking a button re-asks "<question> (I mean: <option>)" with ask-back **disabled**, so it can never loop.
+- **Deterministic ambiguity hint:** `search_records` now lists which parts the STRONG records acted on, using the offline leaderboard labels (e.g. "baffle plug x4, spark plug x1"). The agent decides whether to ask, but the signal comes from data rather than LLM intuition, which matters for the planned local-model branch, where a weaker model needs a clearer signal.
+- Prompt rule: ask only when the words fit different parts or faults, not when the records agree or the extra parts are sub-parts of the same fix.
+- `eval/run_agent_eval.py` reports ask-backs separately, so they're counted neither as answers nor as refusals.
+
+### A bug the test exposed: wrong component labels
+- After clarifying "Baffle plugs", the agent filtered by `component='baffle / cooling'` and then refused. **All 214 records** mentioning a baffle *and* a plug were labelled **ignition**, because the rule for "PLUG" ran before the rule for "BAFFLE". The filter therefore hid exactly the right records.
+- **Fix:** a new rule, checked before ignition: a problem that mentions both a baffle and a plug, or a "button plug", is labelled baffle/cooling. I checked by hand that the 214 records are baffle access/hole/snap/button plugs, caps and covers, never spark plugs themselves. 215 records changed label; ignition went from 281 to 66.
+- **Safety net:** the prompt now says filters come from automatic labels and can be wrong, so the agent must search again without filters before concluding anything.
+- Retrieval hit@5 is unchanged at 13/15.
+
+### Results (live Gemini, Flash-Lite via the fallback chain)
+| Question | Behaviour |
+|---|---|
+| "plugs are worn" | Asks "Which plugs are worn?" with [Baffle plugs] [Spark plugs] (2 LLM calls, 3.8s) |
+| "... (I mean: Spark plugs)" | Answers from rec 105445; 0 lines removed by the verifier |
+| "... (I mean: Baffle plugs)" | Before the label fix: wrongly refused. After: "Replaced: baffle plug, 10 cases", all citations verified |
+| "#3 rocker cover leaking" | Answers directly with no unnecessary ask-back |
+
+### Housekeeping
+- `.env.example` had been deleted locally, and the committed copy was missing its `GOOGLE_API_KEY` / `GEMINI_MODEL` lines. I restored it with placeholders (the rules require it). I scanned every commit of it: no real API key has ever been committed, and `.env` was never tracked.
+
 ### Next steps
-- [ ] Create a public GitHub repo and commit at least hourly.
+- [ ] Commit at least hourly.
 - [ ] Re-run `python -m eval.run_agent_eval` after the quota resets, and report the results in the README.
+- [ ] Local-model branch: keep the deterministic parts hint and the search-only fallback; tool-calling reliability is the main risk.
 - [x] `pip install -r requirements.txt` in the venv.
 - [x] Write test questions before tuning.
 - [x] Build ingestion, normalisation, hybrid index, agent, trust layer, leaderboard and UI.

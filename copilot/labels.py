@@ -11,6 +11,9 @@ COMPONENTS = [
     ("pushrod", r"PUSHROD"),
     ("intake / induction", r"INTAKE|INDUCTION"),
     ("exhaust", r"EXHAUST|MUFFLER|STACK"),
+    # Baffle access/hole/button plugs are baffle hardware, not ignition. Without this rule all
+    # 215 of them were labelled "ignition" and a component filter hid them (see DEV_LOG.md).
+    ("baffle / cooling", r"BAFFL.*PLUG|PLUG.*BAFFL|BUTTON PLUG|PLUG HOLE PLUG"),
     ("ignition", r"PLUG|MAGNETO|IGNITION|HARNESS|\bLEADS?\b"),
     ("baffle / cooling", r"BAFFL|SHROUD|COOLING|SEAL"),
     ("oil system", r"OIL|DIPSTICK|SUMP|FILLER|BREATHER"),

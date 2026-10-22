@@ -1,8 +1,8 @@
 """Hybrid retrieval: BM25 + dense embeddings, fused with Reciprocal Rank Fusion,
 then re-ranked by a cross-encoder whose score drives the evidence gate."""
+import threading
 from dataclasses import dataclass, field
 
-import chromadb
 import numpy as np
 import pandas as pd
 from rank_bm25 import BM25Okapi
@@ -48,10 +48,25 @@ class Retriever:
         set_spellfixer(SpellFixer(corpus))
 
         self.bm25 = BM25Okapi([bm25_tokens(t) for t in self.df["problem_norm"]])
-        self.embedder = SentenceTransformer(config.EMBED_MODEL)
-        self.reranker = CrossEncoder(config.RERANK_MODEL)
-        client = chromadb.PersistentClient(path=str(config.CHROMA_DIR))
-        self.col = client.get_collection(config.CHROMA_COLLECTION)
+        # CPU, not Apple's MPS GPU: sentence-transformers picks MPS by default, and PyTorch's MPS
+        # backend crashed (segfault / malloc abort) when LangGraph ran two tool calls in parallel
+        # threads. The lock also stops parallel tool calls from running the models at once.
+        self.embedder = SentenceTransformer(config.EMBED_MODEL, device=config.DEVICE)
+        self.reranker = CrossEncoder(config.RERANK_MODEL, device=config.DEVICE)
+        self._model_lock = threading.Lock()
+        # Row i of the matrix is record self.ids[i] (same order as records.csv).
+        self.emb = np.load(config.EMBEDDINGS_NPY)
+        assert len(self.emb) == len(self.ids), "embeddings out of date: run python -m scripts.build_index"
+
+    # --- model calls (serialised: see __init__) ----------------------------------
+
+    def _encode(self, text: str) -> np.ndarray:
+        with self._model_lock:
+            return self.embedder.encode(text, normalize_embeddings=True)
+
+    def _rerank(self, pairs, **kw) -> np.ndarray:
+        with self._model_lock:
+            return self.reranker.predict(pairs, **kw)
 
     # --- individual retrievers ------------------------------------------------
 
@@ -69,13 +84,12 @@ class Retriever:
         order = np.argsort(-scores)[:n]
         return [self.ids[i] for i in order if scores[i] > 0]
 
-    def dense_search(self, qnorm: str, n: int, component=None, fault_type=None) -> list[str]:
-        q = self.embedder.encode(config.EMBED_QUERY_PREFIX + qnorm.lower(), normalize_embeddings=True)
-        conds = [{"component": component}] if component else []
-        conds += [{"fault_type": fault_type}] if fault_type else []
-        where = conds[0] if len(conds) == 1 else ({"$and": conds} if conds else None)
-        res = self.col.query(query_embeddings=[q.tolist()], n_results=n, where=where)
-        return res["ids"][0]
+    def dense_search(self, qnorm: str, n: int, mask: np.ndarray) -> list[str]:
+        """Exact cosine search: 6,169 x 384 normalised vectors, one matrix product (<1 ms)."""
+        q = self._encode(config.EMBED_QUERY_PREFIX + qnorm.lower())
+        scores = np.where(mask, self.emb @ q, -np.inf)
+        order = np.argsort(-scores)[:n]
+        return [self.ids[i] for i in order if np.isfinite(scores[i])]
 
     # --- public API -------------------------------------------------------------
 
@@ -89,7 +103,7 @@ class Retriever:
         if mode in ("hybrid", "bm25"):
             rankings.append(self.bm25_search(qnorm, n, mask))
         if mode in ("hybrid", "dense") and mask.any():
-            rankings.append(self.dense_search(qnorm, min(n, int(mask.sum())), component, fault_type))
+            rankings.append(self.dense_search(qnorm, n, mask))
         fused = rrf_fuse(rankings)
         pool = sorted(fused, key=fused.get, reverse=True)[: pool_size if rerank else k]
 
@@ -100,7 +114,7 @@ class Retriever:
         if rerank:
             # Many records share the same PROBLEM text, so score each unique text once.
             uniq = list(dict.fromkeys(rows["problem_norm"]))
-            s = self.reranker.predict([(qnorm.lower(), t.lower()) for t in uniq])
+            s = self._rerank([(qnorm.lower(), t.lower()) for t in uniq])
             text_score = dict(zip(uniq, map(float, s)))
             scores = [text_score[t] for t in rows["problem_norm"]]
         else:
@@ -125,7 +139,7 @@ class Retriever:
         if sub.empty:
             return result
         uniq = sub["problem_norm"].unique().tolist()
-        s = self.reranker.predict([(qnorm.lower(), t.lower()) for t in uniq], batch_size=256)
+        s = self._rerank([(qnorm.lower(), t.lower()) for t in uniq], batch_size=256)
         text_score = dict(zip(uniq, map(float, s)))
         scored = sorted(((text_score[t], i) for i, t in zip(sub["ident"], sub["problem_norm"])), reverse=True)
         for score, ident in scored:
@@ -144,7 +158,7 @@ class Retriever:
         qnorm = normalize(query).lower()
         texts = self.df.loc[idents, "problem_norm"].str.lower().tolist()
         uniq = list(dict.fromkeys(texts))
-        s = dict(zip(uniq, map(float, self.reranker.predict([(qnorm, t) for t in uniq]))))
+        s = dict(zip(uniq, map(float, self._rerank([(qnorm, t) for t in uniq]))))
         return {i: s[t] for i, t in zip(idents, texts)}
 
     def get(self, ident: str) -> dict | None:

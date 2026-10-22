@@ -6,10 +6,9 @@ pandas==3.0.6
 numpy==2.5.4
 symspellpy==6.10.0
 
-# Hybrid retrieval: BM25 keyword search, dense embeddings, vector store, cross-encoder
+# Hybrid retrieval: BM25 keyword search, dense embeddings (numpy exact search), cross-encoder
 rank-bm25==0.2.2
 sentence-transformers==6.2.0
-chromadb==1.5.9
 
 # Agent loop and LLM (Gemini free tier)
 langgraph==1.2.16

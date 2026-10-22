@@ -1,13 +1,12 @@
-"""Offline step: raw CSV -> normalised records + labels -> Chroma index.
+"""Offline step: raw CSV -> normalised records + labels -> embedding matrix.
 
 Run once (about a minute on a laptop CPU):
     python -m scripts.build_index
 BM25 is rebuilt in memory at app start-up from data/records.csv (it takes <1 s).
 """
-import shutil
 import time
 
-import chromadb
+import numpy as np
 import pandas as pd
 from sentence_transformers import SentenceTransformer
 
@@ -42,22 +41,14 @@ def main():
 
     # Dense index over the PROBLEM text: we match on the reported fault, then
     # read the ACTION to see what fixed it.
-    model = SentenceTransformer(config.EMBED_MODEL)
+    model = SentenceTransformer(config.EMBED_MODEL, device=config.DEVICE)
     texts = df["problem_norm"].str.lower().tolist()
     emb = model.encode(texts, batch_size=128, normalize_embeddings=True, show_progress_bar=True)
 
-    shutil.rmtree(config.CHROMA_DIR, ignore_errors=True)
-    client = chromadb.PersistentClient(path=str(config.CHROMA_DIR))
-    col = client.create_collection(config.CHROMA_COLLECTION, metadata={"hnsw:space": "cosine"})
-    for i in range(0, len(df), 2000):
-        part = df.iloc[i:i + 2000]
-        col.add(
-            ids=part["ident"].tolist(),
-            embeddings=emb[i:i + 2000].tolist(),
-            documents=texts[i:i + 2000],
-            metadatas=part[["component", "fault_type"]].to_dict("records"),
-        )
-    print(f"Chroma collection has {col.count()} vectors; done in {time.time() - t0:.0f}s")
+    config.EMBEDDINGS_NPY.parent.mkdir(exist_ok=True)
+    np.save(config.EMBEDDINGS_NPY, emb.astype(np.float32))
+    print(f"Saved {emb.shape[0]} x {emb.shape[1]} embeddings to {config.EMBEDDINGS_NPY}; "
+          f"done in {time.time() - t0:.0f}s")
 
 
 if __name__ == "__main__":

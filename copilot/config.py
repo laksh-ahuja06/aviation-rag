@@ -11,13 +11,16 @@ RAW_CSV = ROOT / "Aircraft_Annotation_DataFile.csv"
 DATA_DIR = ROOT / "data"
 RECORDS_CSV = DATA_DIR / "records.csv"            # raw + normalised text + labels
 ACTION_LABELS_CSV = DATA_DIR / "action_labels.csv"  # offline LLM labels for the leaderboard
-CHROMA_DIR = ROOT / "index" / "chroma"
-CHROMA_COLLECTION = "logbook_problems"
+# Dense index: one normalised bge vector per record, rows in records.csv order.
+# (Exact numpy search replaced Chroma: simpler and exact at this size, see DEV_LOG.md.)
+EMBEDDINGS_NPY = ROOT / "index" / "embeddings.npy"
 
 EMBED_MODEL = "BAAI/bge-small-en-v1.5"
 # bge models expect this prefix on queries only, never on documents.
 EMBED_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
 RERANK_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+# Never "mps": PyTorch's Apple-GPU backend crashed under parallel tool calls (DEV_LOG.md).
+DEVICE = "cpu"
 
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
 GEMINI_FALLBACK_MODEL = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-3.5-flash-lite,gemini-flash-lite-latest,gemini-3.1-flash-lite")

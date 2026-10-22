@@ -1,5 +1,7 @@
 """Fix leaderboard: group the actions taken in similar past records and rank them
 by how often each occurred. Pure pandas over offline labels, so it costs no LLM calls."""
+from collections import Counter
+
 import pandas as pd
 
 from copilot import config
@@ -22,6 +24,12 @@ class ActionLabels:
         df["label"] = [label(t, p) for t, p in zip(df["action_type"], df["part"])]
         self.df = df.set_index("ident")
         self.llm_coverage = float((~missing).mean())
+
+    def parts(self, idents: list[str]) -> Counter:
+        """How many of these records acted on each (canonical) part, e.g. {'baffle plug': 4, 'spark plug': 1}.
+        Deterministic, so even a weak local LLM gets a clear signal when one word covers two parts."""
+        sub = self.df.loc[[i for i in idents if i in self.df.index]]
+        return Counter(p for p in map(canonical_part, sub["part"]) if p and p not in ("none", "engine"))
 
 
 PART_SYNONYMS = [

@@ -26,7 +26,7 @@ CITE_RE = re.compile(r"\b(1\d{5})\b")
 
 @st.cache_resource(show_spinner="Loading models and index (first run only)…")
 def load_copilot() -> Copilot:
-    if not config.CHROMA_DIR.exists():  # fresh deployment: the index isn't committed, build it (~1 min)
+    if not config.EMBEDDINGS_NPY.exists():  # fresh deployment: the index isn't committed, build it (~1 min)
         from scripts.build_index import main as build_index
         build_index()
     return Copilot()
@@ -90,7 +90,26 @@ def to_markdown(answer: str) -> str:
     return "\n".join(out)
 
 
-def render_answer(ans: CopilotAnswer):
+def render_clarification(ans: CopilotAnswer, key: int):
+    """The agent asked back instead of guessing: one button per meaning."""
+    st.info(f"**Before I answer:** {ans.clarification['question']}", icon="❓")
+    cols = st.columns(len(ans.clarification["options"]) or 1)
+    for i, (col, opt) in enumerate(zip(cols, ans.clarification["options"])):
+        if col.button(opt, key=f"clarify-{key}-{i}", use_container_width=True):
+            # Re-ask with the clarified wording; ask-back is disabled for it, so no loops.
+            st.session_state.pending = f"{ans.question} (I mean: {opt})"
+            st.session_state.pending_clarified = True
+    if ans.evidence:
+        with st.expander(f"Why I'm asking: {len(ans.evidence)} matching records cover different parts"):
+            for h in ans.evidence[:8]:
+                st.markdown(f"**rec {h['ident']}**: {h['problem']}  \n→ {h['action']}")
+    render_trace(ans)
+
+
+def render_answer(ans: CopilotAnswer, key: int):
+    if ans.clarification:
+        render_clarification(ans, key)
+        return
     if ans.llm_error:
         st.info("AI assistant unavailable (Gemini quota or outage). Showing search-only results: "
                 "retrieval, evidence gate and fix leaderboard still work without the LLM.", icon="📴")
@@ -132,19 +151,20 @@ with st.sidebar:
 copilot = load_copilot()
 st.session_state.setdefault("history", [])
 
-for q, ans in st.session_state.history:
+for i, (q, ans) in enumerate(st.session_state.history):
     with st.chat_message("user"):
         st.markdown(q)
     with st.chat_message("assistant"):
-        render_answer(ans)
+        render_answer(ans, key=i)
 
 question = st.chat_input("Describe the fault, e.g. 'R/H eng #2 cyl intake leaking'")
 question = question or st.session_state.pop("pending", None)
+clarified = st.session_state.pop("pending_clarified", False)
 if question:
     with st.chat_message("user"):
         st.markdown(question)
     with st.chat_message("assistant"):
         with st.spinner("Searching the logbook…"):
-            ans = copilot.ask(question)
-        render_answer(ans)
+            ans = copilot.ask(question, allow_clarify=not clarified)
+        render_answer(ans, key=len(st.session_state.history))
     st.session_state.history.append((question, ans))

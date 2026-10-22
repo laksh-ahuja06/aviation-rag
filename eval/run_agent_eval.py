@@ -27,12 +27,13 @@ def main():
                "refused": a.refused, "cited": cited, "seconds": round(time.time() - t0, 1),
                "fallback_summary": any(s["tool"] == "fallback_summary" for s in a.trace),
                "llm_error": a.llm_error,
+               "asked_back": bool(a.clarification),
                "answer": a.answer}
         if row["answerable"] and cited:
             rel = [i for i in cited if is_relevant(c.retriever.df.loc[i, "problem"], q["relevant"])]
             row["cited_relevant"] = len(rel)
         rows.append(row)
-        print(f"{q['id']} {'LLM-ERROR ' if a.llm_error else ''}refused={a.refused!s:5} cited={len(cited):2d} "
+        print(f"{q['id']} {'LLM-ERROR ' if a.llm_error else ''}{'ASKED-BACK ' if a.clarification else ''}refused={a.refused!s:5} cited={len(cited):2d} "
               f"relevant={row.get('cited_relevant', '-')!s:>2} {row['seconds']:5.1f}s  {q['question']}")
 
     # Rows where the LLM was unavailable measure search-only mode, not the agent: exclude them.
@@ -42,7 +43,8 @@ def main():
     n_cited = sum(len(r["cited"]) for r in ans)
     n_rel = sum(r.get("cited_relevant", 0) for r in ans)
     summary = {
-        "answered": f"{sum(not r['refused'] for r in ans)}/{len(ans)}",
+        "answered": f"{sum(not r['refused'] and not r['asked_back'] for r in ans)}/{len(ans)}",
+        "asked_back": [r["id"] for r in rows if r["asked_back"]],
         "citation_precision": f"{n_rel}/{n_cited} = {n_rel / n_cited:.2f}" if n_cited else "n/a",
         "correct_refusals": f"{sum(r['refused'] for r in una)}/{len(una)}",
         "fallback_summaries": sum(r["fallback_summary"] for r in rows),

@@ -38,7 +38,7 @@ When a technician sees a fault, the fastest fix is often buried in years of past
 ```mermaid
 flowchart TD
     A["Raw logbook CSV<br/>6,169 records · pandas<br/>keep raw + normalised"] --> B["Normalise text<br/>abbreviations, spelling<br/>symspell · MaintNet abbrev list"]
-    B --> C["Hybrid index<br/>rank_bm25 + Chroma<br/>bge-small-en-v1.5 (alt: all-MiniLM-L6-v2)"]
+    B --> C["Hybrid index<br/>rank_bm25 + numpy exact vector search<br/>bge-small-en-v1.5 (alt: all-MiniLM-L6-v2)"]
     C --> D["Agent loop<br/>rewrite · search · read records<br/>RRF fusion in plain Python<br/>LangGraph + Gemini tool calling"]
     D --> E["Evidence gate<br/>refuse if weak<br/>cross-encoder ms-marco-MiniLM-L-6-v2 (CPU)"]
     E --> F["Citation verifier<br/>checks every claim<br/>drops unsupported lines"]
@@ -63,12 +63,15 @@ _Gray: offline · Purple: reasoning · Teal: trust layer · Coral: standout feat
 - Filter by part, component or fault type
 - Decide the evidence is insufficient and search again
 - Count or summarise across many records ("how often does this fault recur?")
+- **Ask back instead of guessing** when the wording fits two different parts. For example, "plugs are worn" matches both *spark plugs* and *baffle hole plugs*, so the agent asks which one you mean and shows option buttons.
 
-### Agent tools (minimum)
+### Agent tools
 | Tool | Purpose |
 |---|---|
-| `search_records(query, k, filters)` | Hybrid BM25 + dense search fused with RRF |
+| `search_records(query, k, filters)` | Hybrid BM25 + dense search fused with RRF; also lists which **parts** the strong records acted on (an ambiguity hint) |
 | `get_record(ident)` | Fetch a full record by its `IDENT` |
+| `count_similar(query, filters)` | Exact count of matching records across the whole logbook, plus the most frequent fixes |
+| `ask_clarification(question, options)` | Stop and ask the technician which meaning they intended (2–4 options) |
 
 ## Technology stack
 
@@ -79,7 +82,7 @@ _Gray: offline · Purple: reasoning · Teal: trust layer · Coral: standout feat
 | Normalisation | symspellpy, MaintNet abbreviation list |
 | Keyword search | rank-bm25 |
 | Embeddings and re-ranking | sentence-transformers (`BAAI/bge-small-en-v1.5`, `cross-encoder/ms-marco-MiniLM-L-6-v2`) |
-| Vector store | ChromaDB |
+| Vector search | numpy exact cosine search over a saved embedding matrix (replaced Chroma, see DEV_LOG) |
 | Agent | LangGraph, langchain-core |
 | LLM | Google Gemini (free tier) via langchain-google-genai |
 | UI | Streamlit |
@@ -137,14 +140,14 @@ copilot/
   config.py                paths, model names, thresholds
   normalize.py             abbreviation expansion + corpus spell-fixer + BM25 tokens
   labels.py                rule-based component / fault-type / action-type labels
-  retrieval.py             BM25 + Chroma dense search, RRF fusion, cross-encoder rerank
-  tools.py                 agent tools: search_records, get_record, count_similar
+  retrieval.py             BM25 + dense (numpy) search, RRF fusion, cross-encoder rerank
+  tools.py                 agent tools: search_records, get_record, count_similar, ask_clarification
   agent.py                 LangGraph loop + evidence gate + citation verifier
   leaderboard.py           fix leaderboard (pandas group-by over offline labels)
   llm.py                   Gemini with automatic fallback model
   resources/english_words.txt   words the spell-fixer must never "correct"
 scripts/
-  build_index.py           offline: CSV -> data/records.csv + index/chroma
+  build_index.py           offline: CSV -> data/records.csv + index/embeddings.npy
   label_actions.py         offline: Gemini labels each action -> data/action_labels.csv
 eval/
   test_questions.json      15 answerable + 5 unanswerable questions (written before tuning)

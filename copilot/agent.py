@@ -33,8 +33,15 @@ How to work:
 2. If the user names a part or fault type, you may filter.
    component is one of: {COMPONENT_NAMES}
    fault_type is one of: {FAULT_TYPE_NAMES}
+   Filters come from automatic labels and can be wrong: if a filtered search's STRONG records
+   don't describe the user's fault, search again WITHOUT filters before concluding anything.
 3. For "how often / how many / recurring" questions, call count_similar.
 4. Use get_record only if you need to re-read a specific record.
+5. Ask back instead of guessing (only if the ask_clarification tool is available): if the
+   "Parts acted on" line or the STRONG records show the technician's words fit two or more
+   DIFFERENT parts or faults (e.g. "plugs" -> spark plugs AND baffle hole plugs), and the
+   question doesn't say which, call ask_clarification with 2-4 short options. Do not ask when
+   the records agree on one part, or when the extra parts are just sub-parts of the same fix.
 
 Answer rules:
 - Use ONLY records marked STRONG. If after your searches no record is STRONG, or the STRONG
@@ -69,13 +76,13 @@ class CopilotAnswer:
     trace: list[dict] = field(default_factory=list)
     verifier: list[dict] = field(default_factory=list)
     llm_error: str | None = None   # set when the LLM was unavailable (search-only mode)
+    clarification: dict | None = None  # set when the agent asked back: {'question', 'options'}
 
 
 def _text(msg) -> str:
     """Gemini 3 models may return content as a list of parts; .text joins them."""
-    t = getattr(msg, "text", None)
-    t = t() if callable(t) else t
-    return (t if isinstance(t, str) else str(msg.content)).strip()
+    t = getattr(msg, "text", None)  # a str property in langchain-core 1.x (calling it is deprecated)
+    return (str(t) if isinstance(t, str) else str(msg.content)).strip()
 
 
 class Copilot:
@@ -87,8 +94,8 @@ class Copilot:
 
     # --- agent loop -------------------------------------------------------------
 
-    def _graph(self, state: RunState):
-        tools = make_tools(self.retriever, self.labels, state)
+    def _graph(self, state: RunState, allow_clarify: bool):
+        tools = make_tools(self.retriever, self.labels, state, allow_clarify)
         llm = with_fallback(self.primary, self.fallbacks, tools)
 
         def agent(s: MessagesState):
@@ -111,14 +118,22 @@ class Copilot:
         g.add_node("tools", ToolNode(tools))
         g.add_edge(START, "agent")
         g.add_conditional_edges("agent", route, {"tools": "tools", END: END})
-        g.add_edge("tools", "agent")
+        # After ask_clarification the run stops and waits for the technician's reply.
+        g.add_conditional_edges("tools", lambda s: END if state.clarification else "agent",
+                                {"agent": "agent", END: END})
         return g.compile()
 
-    def ask(self, question: str) -> CopilotAnswer:
+    def ask(self, question: str, allow_clarify: bool = True) -> CopilotAnswer:
+        """allow_clarify=False for a question the technician already clarified (no ask-back loops)."""
         state = RunState(question=question)
         try:
-            out = self._graph(state).invoke({"messages": [HumanMessage(question)]},
-                                            {"recursion_limit": 2 * config.MAX_AGENT_STEPS + 4})
+            out = self._graph(state, allow_clarify).invoke({"messages": [HumanMessage(question)]},
+                                                           {"recursion_limit": 2 * config.MAX_AGENT_STEPS + 4})
+            if state.clarification:
+                evidence = sorted((h for h in state.seen.values() if h["strong"]), key=lambda h: -h["score"])
+                return CopilotAnswer(question, state.clarification["question"], False,
+                                     {"n_records": 0, "rows": []}, evidence, state.trace,
+                                     clarification=state.clarification)
             last = out["messages"][-1]
             if getattr(last, "tool_calls", None):  # step budget ran out mid-search: force an answer
                 last = self.verifier_llm.invoke([SystemMessage(SYSTEM_PROMPT)] + out["messages"][:-1]

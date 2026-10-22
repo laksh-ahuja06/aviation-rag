@@ -20,6 +20,7 @@ class RunState:
     llm_error: str | None = None
     seen: dict[str, dict] = field(default_factory=dict)   # ident -> best hit seen by any tool
     trace: list[dict] = field(default_factory=list)
+    clarification: dict | None = None                       # {'question': ..., 'options': [...]}
 
     def remember(self, hits: list[dict]):
         for h in hits:
@@ -32,7 +33,7 @@ def _fmt_hit(h: dict) -> str:
     return f"[rec {h['ident']}] ({tag}, score {h['score']:.1f}) PROBLEM: {h['problem']} | ACTION: {h['action']}"
 
 
-def make_tools(retriever: Retriever, labels: ActionLabels, state: RunState):
+def make_tools(retriever: Retriever, labels: ActionLabels, state: RunState, allow_clarify: bool = True):
 
     @tool
     def search_records(query: str, component: Optional[Component] = None,
@@ -53,7 +54,12 @@ def make_tools(retriever: Retriever, labels: ActionLabels, state: RunState):
         verdict = (f"{n_strong} of {len(res.hits)} records are STRONG evidence." if n_strong else
                    "NO strong evidence: none of these records match well. Rephrase and search again, "
                    "or conclude INSUFFICIENT_EVIDENCE.")
-        return "\n".join([f"Normalised query: {res.normalized_query}", verdict] + [_fmt_hit(h) for h in res.hits])
+        lines = [f"Normalised query: {res.normalized_query}", verdict]
+        parts = labels.parts([h["ident"] for h in res.strong_hits])
+        if parts:
+            lines.append("Parts acted on in the STRONG records: "
+                         + ", ".join(f"{p} x{n}" for p, n in parts.most_common(6)))
+        return "\n".join(lines + [_fmt_hit(h) for h in res.hits])
 
     @tool
     def get_record(ident: str) -> str:
@@ -90,4 +96,16 @@ def make_tools(retriever: Retriever, labels: ActionLabels, state: RunState):
             lines.append(f"- {row['label']}: {row['count']} records [rec {ids}]")
         return "\n".join(lines)
 
-    return [search_records, get_record, count_similar]
+    @tool
+    def ask_clarification(question: str, options: list[str]) -> str:
+        """Ask the technician ONE short question instead of answering, when their wording fits
+        two or more different parts or faults in the STRONG records (e.g. 'plugs' could mean
+        spark plugs or baffle hole plugs). Give 2-4 short options, each naming one meaning."""
+        options = [o.strip() for o in options if o.strip()][:4]
+        state.clarification = {"question": question.strip(), "options": options}
+        state.trace.append({"tool": "ask_clarification", "args": {"question": question, "options": options},
+                            "summary": "asked the technician to clarify; stopped before answering"})
+        return "Question sent to the technician. Stop now and wait for their reply."
+
+    tools = [search_records, get_record, count_similar]
+    return tools + [ask_clarification] if allow_clarify else tools
