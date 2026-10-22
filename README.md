@@ -35,27 +35,7 @@ When a technician sees a fault, the fastest fix is often buried in years of past
 
 ## Architecture
 
-```mermaid
-flowchart TD
-    A["Raw logbook CSV<br/>6,169 records · pandas<br/>keep raw + normalised"] --> B["Normalise text<br/>abbreviations, spelling<br/>symspell · MaintNet abbrev list"]
-    B --> C["Hybrid index<br/>rank_bm25 + numpy exact vector search<br/>bge-small-en-v1.5 (alt: all-MiniLM-L6-v2)"]
-    C --> D["Agent loop<br/>rewrite · search · read records<br/>RRF fusion in plain Python<br/>LangGraph + Gemini tool calling"]
-    D --> E["Evidence gate<br/>refuse if weak<br/>cross-encoder ms-marco-MiniLM-L-6-v2 (CPU)"]
-    E --> F["Citation verifier<br/>checks every claim<br/>drops unsupported lines"]
-    F --> G["Fix leaderboard<br/>ranks fixes by count<br/>LLM-labelled actions · pandas counts"]
-    G --> H["Chat UI<br/>answer · leaderboard · records · trace · disclaimer<br/>Streamlit on Hugging Face Spaces"]
-
-    classDef offline fill:#444,color:#fff,stroke:#666
-    classDef reasoning fill:#4b3a9a,color:#fff,stroke:#6a5acd
-    classDef trust fill:#0f5c4a,color:#fff,stroke:#1d8a6e
-    classDef standout fill:#8a3a1c,color:#fff,stroke:#c0562b
-    class A,B,C offline
-    class D reasoning
-    class E,F,H trust
-    class G standout
-```
-
-_Gray: offline · Purple: reasoning · Teal: trust layer · Coral: standout feature_
+![Maintenance Copilot architecture](docs/architecture.svg)
 
 ### Agent capabilities
 - Rephrase or expand the query (e.g. "cylinder" → "CYL")

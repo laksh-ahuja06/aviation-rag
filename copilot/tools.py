@@ -21,6 +21,7 @@ class RunState:
     seen: dict[str, dict] = field(default_factory=dict)   # ident -> best hit seen by any tool
     trace: list[dict] = field(default_factory=list)
     clarification: dict | None = None                       # {'question': ..., 'options': [...]}
+    allow_clarify: bool = True                              # False once the technician has clarified
 
     def remember(self, hits: list[dict]):
         for h in hits:

@@ -7,6 +7,14 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
 
+# Once both models are in the local Hugging Face cache, load them without contacting the Hub.
+# On a network with TLS interception (a "certificate is revoked" proxy), every Hub check
+# otherwise retries for about a minute before falling back to the cache.
+_HF_CACHE = Path(os.getenv("HF_HOME", Path.home() / ".cache" / "huggingface")) / "hub"
+if all((_HF_CACHE / f"models--{m.replace('/', '--')}").exists()
+       for m in ("BAAI/bge-small-en-v1.5", "cross-encoder/ms-marco-MiniLM-L-6-v2")):
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+
 RAW_CSV = ROOT / "Aircraft_Annotation_DataFile.csv"
 DATA_DIR = ROOT / "data"
 RECORDS_CSV = DATA_DIR / "records.csv"            # raw + normalised text + labels
@@ -37,6 +45,11 @@ EVIDENCE_THRESHOLD = float(os.getenv("EVIDENCE_THRESHOLD", "0.0"))
 # A record found by an agent-rewritten query must still score at least this against the
 # user's original wording. Tune-split unanswerable questions scored <= -7.98.
 ORIGINAL_QUESTION_FLOOR = float(os.getenv("ORIGINAL_QUESTION_FLOOR", "-4.0"))
+
+# Deterministic ask-back: if the evidence within AMBIGUITY_BAND of the best score covers 2+
+# components, and the best score is at least AMBIGUITY_MIN_SCORE, ask which part is meant.
+AMBIGUITY_MIN_SCORE = 5.0
+AMBIGUITY_BAND = 1.0
 
 # Agent
 MAX_AGENT_STEPS = 6

@@ -125,7 +125,7 @@ class Copilot:
 
     def ask(self, question: str, allow_clarify: bool = True) -> CopilotAnswer:
         """allow_clarify=False for a question the technician already clarified (no ask-back loops)."""
-        state = RunState(question=question)
+        state = RunState(question=question, allow_clarify=allow_clarify)
         try:
             out = self._graph(state, allow_clarify).invoke({"messages": [HumanMessage(question)]},
                                                            {"recursion_limit": 2 * config.MAX_AGENT_STEPS + 4})
@@ -180,6 +180,15 @@ class Copilot:
                                  True, {"n_records": 0, "rows": []}, [], state.trace,
                                  llm_error=state.llm_error)
 
+        # Deterministic ask-back. The LLM may or may not call ask_clarification (Flash-Lite asked
+        # for "plugs are worn" in one run and answered a mixed spark/baffle-plug answer in the next),
+        # so the decision can't rest on the model alone.
+        if state.allow_clarify and (amb := self._ambiguity(evidence)):
+            state.trace.append({"tool": "ambiguity_check", "summary": amb["why"]})
+            return CopilotAnswer(question, amb["question"], False, {"n_records": 0, "rows": []}, evidence,
+                                 state.trace, llm_error=state.llm_error,
+                                 clarification={"question": amb["question"], "options": amb["options"]})
+
         if draft is None:  # search-only mode
             answer = self._records_summary(board, "The AI assistant is unavailable (Gemini quota or outage), "
                                                   "so this is a search-only result")
@@ -196,6 +205,32 @@ class Copilot:
         cited = set(CITE_RE.findall(answer))
         evidence.sort(key=lambda h: (h["ident"] not in cited, -h["score"]))
         return CopilotAnswer(question, answer, False, board, evidence, state.trace, report)
+
+    def _ambiguity(self, evidence: list[dict]) -> dict | None:
+        """Ask back when the top-scoring evidence covers 2+ different components and both match
+        strongly. E.g. "plugs are worn": spark plug (ignition, 8.0) vs baffle plugs (baffle, 7.9).
+        Tuned offline on the 15 test questions: it fires on none of them, but does fire on genuinely
+        vague ones like "seal leaking" (pushrod vs baffle) and "screw missing" (baffle vs rocker cover)."""
+        if not evidence or evidence[0]["score"] < config.AMBIGUITY_MIN_SCORE:
+            return None
+        band = [h for h in evidence if h["score"] >= evidence[0]["score"] - config.AMBIGUITY_BAND
+                and h["component"] != "other"]
+        by_comp: dict[str, list[str]] = {}
+        for h in band:
+            by_comp.setdefault(h["component"], []).append(h["ident"])
+        if len(by_comp) < 2:
+            return None
+        options = []
+        for comp, ids in sorted(by_comp.items(), key=lambda kv: -len(kv[1]))[:4]:
+            # Name the component too: "Spark plug hole plug" vs "Spark plug" alone was confusing.
+            part = self.labels.parts(ids).most_common(1)
+            options.append(f"{part[0][0].capitalize()} ({comp})" if part else comp.capitalize())
+        options = list(dict.fromkeys(options))  # two components can share a part name
+        if len(options) < 2:
+            return None
+        return {"question": "Your description matches past records about different parts. Which one do you mean?",
+                "options": options,
+                "why": "top evidence spans " + ", ".join(f"{c} ({len(i)})" for c, i in by_comp.items())}
 
     @staticmethod
     def _records_summary(board: dict, why: str = "The AI-written answer could not be verified") -> str:
@@ -253,6 +288,10 @@ class Copilot:
                 continue
             report.append({"line": line.strip(), "kept": True, "reason": v.get("reason", "") if v else ""})
             final.append(line)
+        # A heading such as "Likely causes:" whose bullets were all removed would show as an empty section.
+        final = [l for i, l in enumerate(final)
+                 if not (l.rstrip().endswith(":") and not is_bullet(l)
+                         and not (i + 1 < len(final) and is_bullet(final[i + 1])))]
         if not any(CITE_RE.search(l) for l in final):
             return "", report
         return "\n".join(final), report

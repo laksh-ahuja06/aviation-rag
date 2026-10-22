@@ -1,0 +1,148 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 820" width="1200" height="820" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <title>Maintenance Copilot architecture</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#9a9a9a"/>
+    </marker>
+    <marker id="arrow-coral" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#e07a50"/>
+    </marker>
+    <style>
+      .title { font-size: 15px; font-weight: 600; text-anchor: middle; }
+      .line  { font-size: 11.5px; text-anchor: middle; }
+      .section { font-size: 11px; font-weight: 600; letter-spacing: 1.2px; fill: #8a8a8a; }
+      .gray   rect { fill: #3a3a3a; stroke: #5a5a5a; }  .gray .title { fill: #f0f0f0; }  .gray .line { fill: #bdbdbd; }
+      .purple rect { fill: #3b2d8a; stroke: #6a5acd; }  .purple .title { fill: #ffffff; } .purple .line { fill: #cfc8ff; }
+      .teal   rect { fill: #0e4a3c; stroke: #1d8a6e; }  .teal .title { fill: #ffffff; }   .teal .line { fill: #9fe3cc; }
+      .coral  rect { fill: #74290f; stroke: #c0562b; }  .coral .title { fill: #ffffff; }  .coral .line { fill: #ffc4a8; }
+      .fallback rect { fill: #262626; stroke: #7a7a7a; stroke-dasharray: 6 4; }
+      .fallback .title { fill: #e0e0e0; } .fallback .line { fill: #a8a8a8; }
+      rect { stroke-width: 1.5; }
+      .flow { stroke: #9a9a9a; stroke-width: 1.6; fill: none; marker-end: url(#arrow); }
+      .flow-dash { stroke: #8a8a8a; stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; marker-end: url(#arrow); }
+      .flow-coral { stroke: #e07a50; stroke-width: 1.6; fill: none; marker-end: url(#arrow-coral); }
+      .note { font-size: 11px; fill: #e07a50; }
+      .legend { font-size: 12px; fill: #b0b0b0; text-anchor: middle; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1200" height="820" rx="18" fill="#161616" stroke="none"/>
+
+  <!-- ===== Row 1: offline build ===== -->
+  <text class="section" x="45" y="44">OFFLINE · scripts/build_index.py, scripts/label_actions.py</text>
+
+  <g class="gray">
+    <rect x="45" y="58" width="255" height="112" rx="9"/>
+    <text class="title" x="172" y="86">Raw logbook CSV</text>
+    <text class="line" x="172" y="110">6,169 records · IDENT, PROBLEM, ACTION</text>
+    <text class="line" x="172" y="128">pandas</text>
+    <text class="line" x="172" y="146">Keep raw + normalised text</text>
+  </g>
+  <g class="gray">
+    <rect x="330" y="58" width="255" height="112" rx="9"/>
+    <text class="title" x="457" y="86">Normalise text</text>
+    <text class="line" x="457" y="110">Abbreviation map (CYL, R/H, A/C, R&amp;R…)</text>
+    <text class="line" x="457" y="128">Corpus symspell + English allowlist</text>
+    <text class="line" x="457" y="146">87 safe typo fixes, no meaning flips</text>
+  </g>
+  <g class="gray">
+    <rect x="615" y="58" width="255" height="112" rx="9"/>
+    <text class="title" x="742" y="86">Offline labels</text>
+    <text class="line" x="742" y="110">Rules: component + fault type</text>
+    <text class="line" x="742" y="128">Gemini, once: action type + part</text>
+    <text class="line" x="742" y="146">5,122 pairs → action_labels.csv</text>
+  </g>
+  <g class="gray">
+    <rect x="900" y="58" width="255" height="112" rx="9"/>
+    <text class="title" x="1027" y="86">Hybrid index</text>
+    <text class="line" x="1027" y="110">rank_bm25 (built in memory)</text>
+    <text class="line" x="1027" y="128">bge-small-en-v1.5 embeddings</text>
+    <text class="line" x="1027" y="146">numpy exact search · CPU</text>
+  </g>
+
+  <path class="flow" d="M300,114 L328,114"/>
+  <path class="flow" d="M585,114 L613,114"/>
+  <path class="flow" d="M870,114 L898,114"/>
+
+  <!-- ===== Row 2: reasoning ===== -->
+  <text class="section" x="45" y="212">PER QUESTION · copilot/agent.py, copilot/tools.py</text>
+
+  <path class="flow" d="M1027,170 L1027,190 L440,190 L440,224"/>
+
+  <g class="purple">
+    <rect x="45" y="226" width="790" height="132" rx="9"/>
+    <text class="title" x="440" y="256">Agent loop</text>
+    <text class="line" x="440" y="281">LangGraph + Gemini 3.5 Flash → Flash-Lite fallback chain (each model has its own daily quota)</text>
+    <text class="line" x="440" y="301">Tools: search_records · get_record · count_similar · ask_clarification</text>
+    <text class="line" x="440" y="321">Search = BM25 + dense → RRF fusion → cross-encoder rerank (ms-marco-MiniLM-L-6-v2, CPU, locked)</text>
+    <text class="line" x="440" y="341">Rewrites shorthand and re-searches when evidence is weak (e.g. "redline" → "overspeed")</text>
+  </g>
+
+  <g class="fallback">
+    <rect x="865" y="226" width="290" height="132" rx="9"/>
+    <text class="title" x="1010" y="256">Search-only mode</text>
+    <text class="line" x="1010" y="281">If Gemini is down or out of quota:</text>
+    <text class="line" x="1010" y="301">retrieval + gate + leaderboard</text>
+    <text class="line" x="1010" y="321">0 LLM calls, "AI offline" banner</text>
+    <text class="line" x="1010" y="341">Still refuses weak evidence</text>
+  </g>
+  <path class="flow-dash" d="M835,292 L863,292"/>
+
+  <!-- ===== Row 3: trust layer ===== -->
+  <text class="section" x="215" y="404">TRUST LAYER · runs on every answer</text>
+
+  <path class="flow" d="M172,358 L172,412"/>
+  <path class="flow-dash" d="M1010,358 L1010,378 L190,378 L190,412"/>
+
+  <g class="teal">
+    <rect x="45" y="414" width="255" height="128" rx="9"/>
+    <text class="title" x="172" y="442">Evidence gate</text>
+    <text class="line" x="172" y="466">Cross-encoder score ≥ 0.0</text>
+    <text class="line" x="172" y="484">Rewritten queries: also ≥ −4.0</text>
+    <text class="line" x="172" y="502">against the original question</text>
+    <text class="line" x="172" y="520">Nothing passes → refuse</text>
+  </g>
+  <g class="teal">
+    <rect x="330" y="414" width="255" height="128" rx="9"/>
+    <text class="title" x="457" y="442">Ambiguity check</text>
+    <text class="line" x="457" y="466">Top records span 2+ components</text>
+    <text class="line" x="457" y="484">and both match strongly?</text>
+    <text class="line" x="457" y="502">→ ask back instead of guessing</text>
+    <text class="line" x="457" y="520">Deterministic, not LLM-decided</text>
+  </g>
+  <g class="teal">
+    <rect x="615" y="414" width="255" height="128" rx="9"/>
+    <text class="title" x="742" y="442">Citation verifier</text>
+    <text class="line" x="742" y="466">Strip IDs that failed the gate</text>
+    <text class="line" x="742" y="484">LLM checks every cited line:</text>
+    <text class="line" x="742" y="502">supported + same fault as question</text>
+    <text class="line" x="742" y="520">Drop unsupported lines/headings</text>
+  </g>
+  <g class="coral">
+    <rect x="900" y="414" width="255" height="128" rx="9"/>
+    <text class="title" x="1027" y="442">Fix leaderboard</text>
+    <text class="line" x="1027" y="466">Ranks past fixes by count</text>
+    <text class="line" x="1027" y="484">Group-by over offline labels</text>
+    <text class="line" x="1027" y="502">pandas · 0 LLM calls</text>
+    <text class="line" x="1027" y="520">Exact counts over all records</text>
+  </g>
+
+  <path class="flow" d="M300,478 L328,478"/>
+  <path class="flow" d="M585,478 L613,478"/>
+  <path class="flow" d="M870,478 L898,478"/>
+
+  <!-- ===== Row 4: UI ===== -->
+  <path class="flow-coral" d="M457,542 L457,612"/>
+  <text class="note" x="466" y="582">ambiguous → option buttons</text>
+  <path class="flow" d="M1027,542 L1027,578 L900,578 L900,612"/>
+
+  <g class="teal">
+    <rect x="200" y="614" width="800" height="112" rx="9"/>
+    <text class="title" x="600" y="644">Chat UI</text>
+    <text class="line" x="600" y="669">Fix leaderboard · cited answer · evidence records side by side · agent trace</text>
+    <text class="line" x="600" y="689">Ask-back option buttons · search-only banner · decision-support disclaimer</text>
+    <text class="line" x="600" y="709">Streamlit + Hugging Face Spaces</text>
+  </g>
+
+  <text class="legend" x="600" y="778">Gray: offline · Purple: reasoning · Teal: trust layer · Coral: standout feature · Dashed: fallback path</text>
+</svg>
