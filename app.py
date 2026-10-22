@@ -64,26 +64,39 @@ def render_leaderboard(board: dict):
     with st.container(border=True):
         st.markdown(f"**🏆 Fix leaderboard**: based on **{board['n_records']}** similar past records")
         top = board["rows"][0]["count"]
-        for row in board["rows"]:
-            c1, c2, c3 = st.columns([4, 3, 5])
-            c1.markdown(row["label"])
-            c2.progress(row["count"] / top, text=f"{row['count']} case{'s' if row['count'] != 1 else ''}")
+        for row in board["rows"][:5]:  # top 5 fixes keeps the panel short; the tail is rarely useful
+            # Two columns (label + IDs | bar) instead of three: the three-column version wrapped
+            # labels letter by letter ("Tightene / d / resecured") in narrow windows.
+            c1, c2 = st.columns([3, 2])
             ids = row["idents"]
-            c3.caption("rec " + ", ".join(ids[:6]) + (f" … +{len(ids) - 6} more" if len(ids) > 6 else ""))
+            c1.markdown(f"{row['label']}  \n:gray[rec {', '.join(ids[:4])}"
+                        + (f" … +{len(ids) - 4} more" if len(ids) > 4 else "") + "]")
+            c2.progress(row["count"] / top, text=f"{row['count']} case{'s' if row['count'] != 1 else ''}")
 
 
-def render_records(ans: CopilotAnswer, limit: int = 12):
+def render_records(ans: CopilotAnswer, top_n: int = 3):
+    """Show only the top cited records as cards; every other gated record sits in a collapsed list."""
     cited = set(CITE_RE.findall(ans.answer))
-    shown = ans.evidence[:limit]
-    st.markdown(f"**📄 Evidence records** ({len(cited)} cited, {len(ans.evidence)} passed the gate)")
-    for h in shown:
+    cards = [h for h in ans.evidence if h["ident"] in cited][:top_n] or ans.evidence[:top_n]
+    st.markdown(f"**📄 Top cited records** ({len(cited)} cited, {len(ans.evidence)} passed the gate)")
+    for h in cards:
         tag = "✅ cited" if h["ident"] in cited else "supporting"
         with st.container(border=True):
             st.markdown(f"**rec {h['ident']}** · {tag} · relevance {h['score']:.1f}")
             st.markdown(f"**Problem:** {h['problem']}  \n**Action:** {h['action']}")
             st.caption(f"{h['component']} · {h['fault_type']}")
-    if len(ans.evidence) > limit:
-        st.caption(f"+ {len(ans.evidence) - limit} more records in the leaderboard counts.")
+    rest = [h for h in ans.evidence if h not in cards]
+    if rest:
+        # Count questions can gate 1,000+ records; list the 30 strongest, the leaderboard counts them all.
+        label = (f"Show all {len(ans.evidence)} evidence records" if len(rest) <= 30
+                 else f"Show top 30 of {len(ans.evidence)} evidence records")
+        with st.expander(label):
+            for h in rest[:30]:
+                tag = "✅" if h["ident"] in cited else "·"
+                st.markdown(f"{tag} **rec {h['ident']}** ({h['score']:.1f}): {h['problem']}  \n"
+                            f":gray[→ {h['action']}]")
+            if len(rest) > 30:
+                st.caption(f"+ {len(rest) - 30} more, all included in the fix leaderboard counts.")
 
 
 def render_trace(ans: CopilotAnswer):
@@ -145,8 +158,8 @@ def render_answer(ans: CopilotAnswer, key: int):
         return
     left, right = st.columns([3, 2], gap="large")
     with left:
-        render_leaderboard(ans.leaderboard)
         st.markdown(to_markdown(ans.answer))
+        render_leaderboard(ans.leaderboard)  # after "Actions that fixed it": the answer first, then the counts
     with right:
         render_records(ans)
     render_trace(ans)

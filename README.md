@@ -24,14 +24,14 @@ When a technician sees a fault, the fastest fix is often buried in years of past
 - **Trust layer:**
   - An evidence gate (cross-encoder) refuses when matches are weak.
   - A citation verifier drops claims that the cited records don't support.
-- **Fix leaderboard (standout feature):** an evidence card above the answer that groups the actions taken in similar past cases and ranks them by frequency:
+- **Fix leaderboard (standout feature):** an evidence card below the answer that groups the actions taken in similar past cases and ranks the top 5 by frequency:
   ```
   Based on 9 similar records:
   • Replaced spark plugs        5 cases [rec 100112, 100487, …]
   • Cleaned / regapped plugs    3 cases [rec 100903, …]
   • Replaced ignition lead      1 case  [rec 102201]
   ```
-- **Chat UI** shows the answer, the leaderboard, the cited records side by side, the agent's tool-call trace and the disclaimer.
+- **Chat UI** shows the answer followed by the fix leaderboard, the top 3 cited records side by side (with every other evidence record in a collapsible list), the agent's tool-call trace and the disclaimer.
 
 ## Demo walkthrough
 
@@ -40,7 +40,7 @@ Five questions that show each behaviour of the copilot (screenshots from the run
 ### 1. Answer with citations and a fix leaderboard
 **"#3 rocker cover leaking, what usually fixes it?"**
 - The leaderboard ranks past fixes: **"Replaced: rocker cover gasket", 9 of 10 similar records**.
-- Every bullet in the answer cites its records, and the cited records appear on the right with their original logbook text.
+- Every bullet in the answer cites its records, and the top 3 cited records appear on the right with their original logbook text.
 
 ![Answer with citations and fix leaderboard](docs/screenshots/2-answer-rocker-cover.png)
 
