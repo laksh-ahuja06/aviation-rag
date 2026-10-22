@@ -216,11 +216,29 @@ Following the PS 1.3 brief, the test questions were written **before** any tunin
 | tune (8 questions) | 7/8 | 7/8 | 7/8 | 7/8 |
 | test (7 questions) | 6/7 | 6/7 | 6/7 | 6/7 |
 
-**Refusals at the retrieval level (test split):** all 3 unanswerable questions fall below the evidence threshold (best cross-encoder scores −0.54, −1.10, −3.89; threshold 0.0).
+**Refusals at the retrieval level:** all 5 unanswerable questions fall below the evidence threshold of 0.0 (best cross-encoder scores −8.67, −9.30, −2.63, −3.89, −1.10).
 
-**End-to-end agent evaluation** (`python -m eval.run_agent_eval`): _pending._ The first run hit the Gemini free-tier limit of 20 requests per model per day partway through, so it is not reported. Rows where the LLM was unavailable are now flagged and excluded automatically.
+**End-to-end agent evaluation** (`python -m eval.run_agent_eval`, full agent with live Gemini, 22 Oct 2026). Raw results are in [eval/results_agent.json](eval/results_agent.json).
 
-Limitations of this evaluation: 20 questions is a small set, and on it the four retrievers perform identically, so the benefit of hybrid search is **not demonstrated** here. Two misses are explained in [DEV_LOG.md](DEV_LOG.md).
+| Metric | Result |
+|---|---|
+| **Citation precision**: cited records whose problem matches the question's relevance rule | **66 / 66 (100%)** |
+| **Correct refusals** on unanswerable questions | **3 / 3** (2 more excluded, see below) |
+| Answerable questions answered with citations | **9 / 13** |
+| ↳ asked back instead (A07 "big magneto drop", A14 "engine shaking badly") | 2 |
+| ↳ refused (A06 "idles too fast", A15 "alternator not charging") | 2 |
+| Median time per question | 5.5 s |
+
+- **Excluded:** 4 of the 20 questions (A10, A11, U02, U03) hit a Gemini **rate limit** (`429 RESOURCE_EXHAUSTED`) during the run. They are left out of every metric above rather than counted as answers or refusals.
+- **How to read the misses:**
+  - The two refusals are counted as failures under the pre-written test definition. The data partly supports them, though: the closest records describe an alternator *cooling hose* chafing and an engine *quitting* at idle, which is not the same fault as the question.
+  - Both ask-backs were the agent's own choice. "Engine shaking badly" really does have several different causes in the logbook.
+
+**Limitations of this evaluation:**
+- 20 questions is a small set, and 4 of them were lost to rate limits.
+- On this set the four retrievers perform identically, so the benefit of hybrid search is **not demonstrated** here.
+- Citation precision is measured with the same regex relevance rules as hit@5, not by human judgement.
+- More detail on the misses is in [DEV_LOG.md](DEV_LOG.md).
 
 ## Responsible AI and limitations
 - Answers are grounded only in the logbook records and always cite `IDENT`s; when evidence is weak, the copilot refuses.

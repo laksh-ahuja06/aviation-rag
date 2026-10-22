@@ -262,10 +262,29 @@ Agent behaviours to support: query expansion ("cylinder" → "CYL"), several sea
 - **Fix:** `load_copilot(version)` is now keyed by a hash of the `copilot/*.py` sources, so any code change builds a fresh copilot. `max_entries=1` drops the old one, which matters at about 610 MB each against a 2.7 GB limit. The new attribute is also read with `getattr(..., None)`.
 - Verified locally by reproducing the scenario: started the app, changed a `copilot/` file while it was running, then reloaded. The server log shows both models loaded a second time (a rebuild), with no error.
 
+---
+
+## 22 Oct 2026, 2:30 PM: End-to-end agent evaluation
+
+Ran `python -m eval.run_agent_eval`: all 20 test questions through the full agent with live Gemini. Raw output is in `eval/results_agent.json`.
+
+| Metric | Result |
+|---|---|
+| Citation precision (regex relevance rule) | 66 / 66 = 100% |
+| Correct refusals, unanswerable questions | 3 / 3 |
+| Answerable questions answered | 9 / 13 (2 asked back, 2 refused) |
+| Excluded: Gemini rate limit (429) during the run | 4 (A10, A11, U02, U03) |
+| Median time per question | 5.5 s |
+
+- **Rate limits:** the 4 excluded rows failed with `429 RESOURCE_EXHAUSTED` on `gemini-3.5-flash`. Later questions succeeded, so this was a short-term rate limit rather than the daily quota. The script excludes LLM-error rows by design, so search-only answers are never counted as agent results.
+- **Ask-backs (A07, A14)** came from the LLM's own `ask_clarification` call, not the deterministic rule (the question text is the model's). "Engine shaking badly" really does span several causes; "big magneto drop" was asked as plugs vs internal engine. Under the test definition both count as not answered.
+- **Refusals (A06, A15)** count as failures under the pre-written relevance rules. The nearest records were "engine quit at idle" (not "idles too fast") and an alternator *cooling hose* chafing (not "not charging"), so the agent judged them a different fault. That's defensible, but I'm reporting it as a miss rather than re-labelling the test after seeing the results.
+- **Citation precision of 100%** means every cited record matched the question's relevance rule. It's measured by regex, not by a human, so it's an upper-bound signal.
+
 ### Next steps
 - [ ] Commit at least hourly.
 - [ ] Hand-check 50 random action labels and report the accuracy in the README.
-- [ ] Re-run `python -m eval.run_agent_eval` after the quota resets, and report the results in the README.
+- [x] Run `python -m eval.run_agent_eval` and report the results in the README (2:30 PM).
 - [ ] Local-model branch: keep the deterministic parts hint and the search-only fallback; tool-calling reliability is the main risk.
 - [ ] Demo video (≤ 5 min), pitch deck (PowerPoint), LinkedIn + X posts, and team details in the README.
 - [x] `pip install -r requirements.txt` in the venv.
