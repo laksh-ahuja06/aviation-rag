@@ -194,5 +194,4 @@ Limitations of this evaluation: 20 questions is a small set, and on it the four 
 
 | Name | Role | Contact |
 |---|---|---|
-| _TBD_ | | |
-# aviation-rag
+| Laksh Ahuja | Frontend, Backend, AI Part | 8810564903 |

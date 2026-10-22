@@ -1,0 +1,27 @@
+{
+  "_note": "Written on 21 Oct 2026 BEFORE any retrieval code existed. A record is relevant if its PROBLEM text matches every regex in `relevant` (case-sensitive; the data is upper-case). The 'tune' split may be used to pick the refusal threshold; the 'test' split is only used for reporting.",
+  "answerable": [
+    {"id": "A01", "split": "tune", "question": "Rocker cover leaking oil on cyl 3, what's the usual fix?", "relevant": ["ROCKER", "GASKET|LEAK"]},
+    {"id": "A02", "split": "tune", "question": "intake leaking on #2 cylinder of the right engine", "relevant": ["INTAKE", "LEAK"]},
+    {"id": "A03", "split": "tune", "question": "flight data shows the engine went past redline rpm", "relevant": ["OVERSPEED|OVER SPEED"]},
+    {"id": "A04", "split": "tune", "question": "cylinder 4 compression check came out 0/80", "relevant": ["COMPRESSION|COMP\\b"]},
+    {"id": "A05", "split": "tune", "question": "found a crack in the cylinder cooling baffle", "relevant": ["BAFFLE", "CRACK"]},
+    {"id": "A06", "split": "tune", "question": "engine idles too fast and won't adjust", "relevant": ["IDLE"]},
+    {"id": "A07", "split": "tune", "question": "big magneto drop during the run-up", "relevant": ["MAG", "DROP"]},
+    {"id": "A08", "split": "tune", "question": "screw missing from the engine baffle", "relevant": ["BAFFLE", "SCREW", "MISSING"]},
+    {"id": "A09", "split": "test", "question": "induction tube gasket is leaking", "relevant": ["INDUCTION", "LEAK"]},
+    {"id": "A10", "split": "test", "question": "exhaust pipe cracked near the cylinder", "relevant": ["EXHAUST|EXH", "CRACK|LEAK"]},
+    {"id": "A11", "split": "test", "question": "pushrod tube seal leaking oil", "relevant": ["PUSH ?ROD"]},
+    {"id": "A12", "split": "test", "question": "one cylinder head running too hot", "relevant": ["CHT|HEAD TEMP"]},
+    {"id": "A13", "split": "test", "question": "oil dip stick tube is loose", "relevant": ["DIPSTICK|DIP STICK|FILLER"]},
+    {"id": "A14", "split": "test", "question": "engine shaking badly during the run", "relevant": ["VIBRAT|ROUGH"]},
+    {"id": "A15", "split": "test", "question": "alternator not charging", "relevant": ["ALTERNATOR|\\bALT\\b"]}
+  ],
+  "unanswerable": [
+    {"id": "U01", "split": "tune", "question": "GPS display is blank after power up"},
+    {"id": "U02", "split": "tune", "question": "cabin pressurisation controller fault"},
+    {"id": "U03", "split": "test", "question": "pitot tube blocked giving wrong airspeed"},
+    {"id": "U04", "split": "test", "question": "hydraulic fluid leaking from the flap actuator"},
+    {"id": "U05", "split": "test", "question": "windshield has a crack across the pilot side"}
+  ]
+}
