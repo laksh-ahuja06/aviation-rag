@@ -281,6 +281,28 @@ Ran `python -m eval.run_agent_eval`: all 20 test questions through the full agen
 - **Refusals (A06, A15)** count as failures under the pre-written relevance rules. The nearest records were "engine quit at idle" (not "idles too fast") and an alternator *cooling hose* chafing (not "not charging"), so the agent judged them a different fault. That's defensible, but I'm reporting it as a miss rather than re-labelling the test after seeing the results.
 - **Citation precision of 100%** means every cited record matched the question's relevance rule. It's measured by regex, not by a human, so it's an upper-bound signal.
 
+---
+
+## 22 Oct 2026, 4:30 PM: UI clean-up and known limitations
+
+### UI changes (`app.py`)
+- **Answer first, then the leaderboard.** The fix leaderboard now appears below "Actions that fixed it" instead of above the answer.
+- **The leaderboard is less cramped:**
+  - It uses two columns (label with record IDs underneath, then the bar) instead of three. The three-column version wrapped labels letter by letter in narrow windows ("Tightene / d / resecured").
+  - It shows only the top 5 fixes; the tail rows (7–9 cases) added scrolling without adding information.
+- **Only the top 3 cited records appear as cards.** Every other gated record is in a collapsed "Show all evidence records" list.
+- **The list is capped at 30 records.** A count question gated **1,254** records in testing, and rendering all of them made the page slow. The cap keeps it fast, and the leaderboard still counts every record.
+- Tested in the browser with "#3 rocker cover leaking". The README wording was updated to match.
+
+### Known limitations (investigated; decided not to fix before submission)
+- **"Likely causes" missing in some answers.** In the evaluation, 4 of 9 answered questions (A03, A05, A08, A09) had no causes section, while all their action bullets survived.
+  - Cause: logbook entries record the symptom and the fix, rarely the root cause. Gemini infers causes (e.g. vibration, wear) that the cited records don't state, and the verifier correctly removes them as unsupported, along with the empty heading.
+  - Causes do survive when a record names one (e.g. "found exhaust valve leaking").
+  - Possible fix, not implemented: rename the section to "Findings in the records", ask only for causes the records actually state, and show a note when none exist.
+- **The summary sentence isn't verified.** The verifier checks only cited lines, so A09's uncited opening sentence "typically caused by a worn or failed gasket seal" survived.
+- **Counts ignore cylinder numbers.** The cross-encoder scores "#3" and "#4 rocker cover" almost identically, so "1,254 similar records" counts every cylinder. The verifier did remove a line citing #2/#4-cylinder records for a #3 question.
+- All three are documented under "Responsible AI and limitations" in the README.
+
 ### Next steps
 - [ ] Commit at least hourly.
 - [ ] Hand-check 50 random action labels and report the accuracy in the README.

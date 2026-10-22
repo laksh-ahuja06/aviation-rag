@@ -244,6 +244,9 @@ Following the PS 1.3 brief, the test questions were written **before** any tunin
 - Answers are grounded only in the logbook records and always cite `IDENT`s; when evidence is weak, the copilot refuses.
 - The dataset covers one training fleet (2012–2017), so its coverage of aircraft types and faults is limited.
 - Short records make similarity scores bunch together. The refusal threshold is tuned on a held-out test set and documented in [DEV_LOG.md](DEV_LOG.md).
+- **"Likely causes" is often missing.** Logbook entries record the symptom and the fix, rarely the root cause. When Gemini infers a cause that the cited records don't state, the citation verifier removes it, so only the actions remain. In the evaluation, 4 of 9 answers had no causes section. This is intended (no unsupported claims), but it means the copilot reports *what fixed* a fault more reliably than *why* it happened.
+- **The summary sentence is not verified.** The citation verifier checks only lines that carry citations, so an uncited claim in the opening sentence (e.g. a general cause) can remain.
+- **Counts ignore cylinder numbers.** The relevance model scores "#3 rocker cover" and "#4 rocker cover" almost the same, so a count such as "1,254 similar records" covers every cylinder, not only the one asked about. The verifier does catch citations to the wrong cylinder.
 
 ## AI tools and dependencies declared
 - **AI coding assistant:** Claude Code (Anthropic), used for architecture review, scaffolding and documentation. Details are in [DEV_LOG.md](DEV_LOG.md).
